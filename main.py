@@ -29,33 +29,45 @@ class PredictionRequest(BaseModel):
 def read_root():
     return "Welcome to Garrett's Gaussian Process server!"
 
-# Define Gaussian Process prediction endpoint
 @app.post("/predict")
 def predict_gp(data: PredictionRequest):
     print("Received Data:", data)  # Debugging print statement
 
     # Convert input data to numpy arrays (ensuring correct dtype)
-    x_train = np.array(data.x_values, dtype=np.float64).reshape(-1, 1)  # Ensure shape (n_samples, 1)
-    y_train = np.array(data.y_values, dtype=np.float64)  # Ensure Y is float64
+    x_train = np.array(data.x_values, dtype=np.float64).reshape(-1, 1)  # Shape: (n_samples, 1)
+    y_train = np.array(data.y_values, dtype=np.float64)
 
-    # Define Gaussian Process Kernel
+    # Ensure the periodicity is always longer than 5
+    # periodicity_value = max(len(x_train) / 2, 6)
+    quarter_lenth = len(x_train) // 4
+    full_length = len(x_train)
+
+    # Define a modified Gaussian Process Kernel with even smoother properties:
     kernel = (
-        ConstantKernel(1.5, (0.5, 100)) *  
-        (RBF(length_scale=7, length_scale_bounds=(3, 20)) +  
-         Matern(length_scale=5, nu=1.5) +  
-         ExpSineSquared(length_scale=3, periodicity=len(x_train) / 2) +  
-         RationalQuadratic(length_scale=5, alpha=1.0))  
-        + WhiteKernel(noise_level=0.8, noise_level_bounds=(0.1, 5))
+        ConstantKernel(1.5, (0.5, 100))
+        * (
+        #     # Increase length scale to produce smoother functions:
+            RBF(length_scale=quarter_lenth, length_scale_bounds=(quarter_lenth, full_length))
+            + Matern(length_scale=quarter_lenth, nu=2.5, length_scale_bounds=(quarter_lenth, full_length))
+            # + ExpSineSquared(
+            #     length_scale=3,
+            #     periodicity=periodicity_value,
+            #     periodicity_bounds=(6, 20)
+            # )
+            + RationalQuadratic(length_scale=quarter_lenth, alpha=1.0, length_scale_bounds=(quarter_lenth, full_length))
+        )
+        # Increase the white noise level for additional smoothing
+        + WhiteKernel(noise_level=2.0, noise_level_bounds=(0.1, 5))
     )
 
-    # Initialize and fit GP model
-    gp = GaussianProcessRegressor(kernel=kernel, alpha=1e-2, n_restarts_optimizer=20)
+    # Initialize and fit GP model with normalization for better scaling
+    gp = GaussianProcessRegressor(kernel=kernel, alpha=1e-2, n_restarts_optimizer=20, normalize_y=True)
     gp.fit(x_train, y_train)
 
-    # Ensure `x_range` is interpolated exactly like frontend
+    # Create an interpolation range for prediction
     x_min = 0
     x_max = np.max(x_train) + 1
-    x_range = np.array([x_min + (i * (x_max - x_min)) / 99 for i in range(100)]).reshape(-1, 1)
+    x_range = np.linspace(x_min, x_max, 100).reshape(-1, 1)
 
     # Predict mean and uncertainty over the test range
     y_mean, y_std = gp.predict(x_range, return_std=True)
@@ -70,7 +82,7 @@ def predict_gp(data: PredictionRequest):
 
     # Return results
     return {
-        "x_range": x_range.flatten().tolist(),  # Matches frontend interpolation
+        "x_range": x_range.flatten().tolist(),
         "y_mean": y_mean.tolist(),
         "y_uncertainty": y_std.tolist(),
         "target_prediction": {
@@ -84,6 +96,8 @@ def predict_gp(data: PredictionRequest):
             "uncertainty": 2 * last_sigma[0]
         }
     }
+
+
 
 # Run FastAPI server
 if __name__ == "__main__":
