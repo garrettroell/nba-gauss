@@ -49,11 +49,6 @@ def predict_gp(data: PredictionRequest):
         #     # Increase length scale to produce smoother functions:
             RBF(length_scale=quarter_lenth, length_scale_bounds=(quarter_lenth, full_length))
             + Matern(length_scale=quarter_lenth, nu=2.5, length_scale_bounds=(quarter_lenth, full_length))
-            # + ExpSineSquared(
-            #     length_scale=3,
-            #     periodicity=periodicity_value,
-            #     periodicity_bounds=(6, 20)
-            # )
             + RationalQuadratic(length_scale=quarter_lenth, alpha=1.0, length_scale_bounds=(quarter_lenth, full_length))
         )
         # Increase the white noise level for additional smoothing
@@ -76,25 +71,14 @@ def predict_gp(data: PredictionRequest):
     x_target_array = np.array([[data.x_target]], dtype=np.float64)
     y_target_pred, target_sigma = gp.predict(x_target_array, return_std=True)
 
-    # Predict value at the last observed X for comparison
-    x_last = np.array([[np.max(x_train)]], dtype=np.float64)
-    y_last_pred, last_sigma = gp.predict(x_last, return_std=True)
-
     # Return results
     return {
-        "x_range": x_range.flatten().tolist(),
-        "y_mean": y_mean.tolist(),
-        "y_uncertainty": y_std.tolist(),
-        "target_prediction": {
-            "x": data.x_target,
-            "y": y_target_pred[0],
-            "uncertainty": 2 * target_sigma[0]
-        },
-        "last_prediction": {
-            "x": float(np.max(x_train)),
-            "y": y_last_pred[0],
-            "uncertainty": 2 * last_sigma[0]
-        }
+        "x_values": x_range.flatten().tolist(),
+        "y_values": y_mean.tolist(),
+        "y_std_values": y_std.tolist(),
+        "x_target":  data.x_target,
+        "y_target": y_target_pred[0],
+        "y_std_target": target_sigma[0],
     }
 
 
